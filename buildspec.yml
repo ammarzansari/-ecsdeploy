@@ -1,0 +1,31 @@
+version: 0.2
+run-as: root
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY
+      - echo "Setting up build variables..."
+      - IMAGE_TAG=build-${CODEBUILD_BUILD_NUMBER}
+  build:
+    commands:
+      - echo "Build started on $(date)"
+      - echo "Installing dependencies..."
+      - npm ci || npm install
+      - echo "Building Docker image..."
+      - docker build -t $ECR_REPOSITORY:latest .
+      - docker tag $ECR_REPOSITORY:latest $ECR_REPOSITORY:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo "Pushing Docker images to ECR..."
+      - docker push $ECR_REPOSITORY:latest
+      - docker push $ECR_REPOSITORY:$IMAGE_TAG
+      - echo "Writing image definitions file..."
+      - CONTAINER_NAME=umair-frontend-container
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME $ECR_REPOSITORY:$IMAGE_TAG > imagedefinitions.json
+      - cat imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
